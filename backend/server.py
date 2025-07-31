@@ -274,4 +274,4 @@ async def shutdown_db_client():
     client.close()
 
 # Mount Socket.IO - use a different approach for compatibility
-socket_app = socketio.ASGIApp(sio, other_asgi_app=app)
+app = socketio.ASGIApp(sio, other_asgi_app=app)
