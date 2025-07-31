@@ -21,7 +21,7 @@ mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
 
-# Create Socket.IO server
+# Create Socket.IO server with custom path
 sio = socketio.AsyncServer(
     cors_allowed_origins="*",
     logger=True,
