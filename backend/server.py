@@ -254,10 +254,15 @@ async def get_room(room_id: str):
 # Include the router in the main app
 app.include_router(api_router)
 
+origins = [
+    "https://watch-party-sigma.vercel.app", 
+    "http://localhost:3000",  
+]
+
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
-    allow_origins=["*"],
+    allow_origins=origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )
