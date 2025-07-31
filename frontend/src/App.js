@@ -61,8 +61,12 @@ function App() {
     // Load available rooms
     loadAvailableRooms();
     
-    // Initialize Socket.IO connection
-    const newSocket = io(BACKEND_URL);
+    // Initialize Socket.IO connection with backend URL directly
+    const newSocket = io(BACKEND_URL, {
+      transports: ['polling', 'websocket'],
+      upgrade: true,
+      timeout: 20000
+    });
     setSocket(newSocket);
 
     newSocket.on('connected', (data) => {
