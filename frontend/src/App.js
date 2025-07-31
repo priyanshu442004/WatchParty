@@ -24,6 +24,7 @@ function App() {
   const [room, setRoom] = useState(null);
   const [userName, setUserName] = useState('');
   const [roomName, setRoomName] = useState('');
+  const [roomId, setRoomId] = useState('');
   const [isInRoom, setIsInRoom] = useState(false);
   const [participants, setParticipants] = useState({});
   const [localStream, setLocalStream] = useState(null);
@@ -32,6 +33,8 @@ function App() {
   const [isVideoEnabled, setIsVideoEnabled] = useState(true);
   const [isAudioEnabled, setIsAudioEnabled] = useState(true);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
+  const [availableRooms, setAvailableRooms] = useState([]);
+  const [showJoinRoom, setShowJoinRoom] = useState(false);
   
   const localVideoRef = useRef();
   const remoteVideoRefs = useRef({});
