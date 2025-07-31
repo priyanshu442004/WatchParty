@@ -424,21 +424,79 @@ function App() {
                 className="bg-white/10 border-white/20 text-white placeholder:text-white/50"
               />
             </div>
-            <div>
-              <Input
-                placeholder="Room name"
-                value={roomName}
-                onChange={(e) => setRoomName(e.target.value)}
-                className="bg-white/10 border-white/20 text-white placeholder:text-white/50"
-              />
-            </div>
-            <Button 
-              onClick={createRoom}
-              className="w-full bg-purple-600 hover:bg-purple-700"
-              disabled={!userName.trim() || !roomName.trim()}
-            >
-              Create Room
-            </Button>
+
+            {!showJoinRoom ? (
+              // Create Room Mode
+              <>
+                <div>
+                  <Input
+                    placeholder="Room name"
+                    value={roomName}
+                    onChange={(e) => setRoomName(e.target.value)}
+                    className="bg-white/10 border-white/20 text-white placeholder:text-white/50"
+                  />
+                </div>
+                <Button 
+                  onClick={createRoom}
+                  className="w-full bg-purple-600 hover:bg-purple-700"
+                  disabled={!userName.trim() || !roomName.trim()}
+                >
+                  Create Room
+                </Button>
+                <div className="text-center">
+                  <Button 
+                    variant="ghost" 
+                    onClick={() => setShowJoinRoom(true)}
+                    className="text-white/70 hover:text-white"
+                  >
+                    Or join existing room
+                  </Button>
+                </div>
+              </>
+            ) : (
+              // Join Room Mode
+              <>
+                <div className="space-y-2">
+                  <p className="text-white/70 text-sm">Available Rooms:</p>
+                  <div className="max-h-32 overflow-y-auto space-y-2">
+                    {availableRooms.length > 0 ? (
+                      availableRooms.map((room) => (
+                        <div 
+                          key={room.id}
+                          className="bg-white/5 border border-white/10 rounded-lg p-3 cursor-pointer hover:bg-white/10 transition-colors"
+                          onClick={() => joinExistingRoom(room.id)}
+                        >
+                          <p className="text-white font-medium">{room.name}</p>
+                          <p className="text-white/50 text-xs">
+                            Created {new Date(room.created_at).toLocaleTimeString()}
+                          </p>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="text-white/50 text-sm text-center py-4">
+                        No rooms available. Create one instead!
+                      </p>
+                    )}
+                  </div>
+                </div>
+                <div className="text-center space-y-2">
+                  <Button 
+                    variant="ghost" 
+                    onClick={() => setShowJoinRoom(false)}
+                    className="text-white/70 hover:text-white"
+                  >
+                    Create new room instead
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    onClick={loadAvailableRooms}
+                    className="w-full border-white/20 text-white hover:bg-white/10"
+                  >
+                    Refresh Rooms
+                  </Button>
+                </div>
+              </>
+            )}
           </CardContent>
         </Card>
       </div>
