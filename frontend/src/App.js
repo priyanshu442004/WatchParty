@@ -13,38 +13,27 @@ import {
   MonitorOff,
   Phone,
   Users,
-  Settings
+  AlertCircle
 } from 'lucide-react';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 
 function App() {
-  const [socket, setSocket] = useState(null);
   const [room, setRoom] = useState(null);
   const [userName, setUserName] = useState('');
   const [roomName, setRoomName] = useState('');
   const [roomId, setRoomId] = useState('');
   const [isInRoom, setIsInRoom] = useState(false);
-  const [participants, setParticipants] = useState({});
   const [localStream, setLocalStream] = useState(null);
-  const [remoteStreams, setRemoteStreams] = useState({});
-  const [peerConnections, setPeerConnections] = useState({});
   const [isVideoEnabled, setIsVideoEnabled] = useState(true);
   const [isAudioEnabled, setIsAudioEnabled] = useState(true);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [availableRooms, setAvailableRooms] = useState([]);
   const [showJoinRoom, setShowJoinRoom] = useState(false);
+  const [mediaPermissionGranted, setMediaPermissionGranted] = useState(false);
+  const [roomInfo, setRoomInfo] = useState(null);
   
   const localVideoRef = useRef();
-  const remoteVideoRefs = useRef({});
-
-  // WebRTC Configuration
-  const rtcConfig = {
-    iceServers: [
-      { urls: 'stun:stun.l.google.com:19302' },
-      { urls: 'stun:stun1.l.google.com:19302' }
-    ]
-  };
 
   const loadAvailableRooms = async () => {
     try {
@@ -57,91 +46,7 @@ function App() {
   };
 
   useEffect(() => {
-    // Load available rooms
     loadAvailableRooms();
-    
-    // Initialize Socket.IO connection with backend URL directly
-    const newSocket = io(BACKEND_URL, {
-      transports: ['polling', 'websocket'],
-      upgrade: true,
-      timeout: 20000
-    });
-    setSocket(newSocket);
-
-    newSocket.on('connected', (data) => {
-      console.log('Connected to server:', data.message);
-    });
-
-    newSocket.on('room_joined', async (data) => {
-      console.log('Joined room:', data);
-      setIsInRoom(true);
-      setParticipants(data.participants);
-      
-      // Start local media
-      await startLocalMedia();
-      
-      // Create peer connections for existing participants
-      Object.keys(data.participants).forEach(participantId => {
-        createPeerConnection(participantId, true); // We are the caller
-      });
-    });
-
-    newSocket.on('user_joined', async (data) => {
-      console.log('User joined:', data);
-      setParticipants(prev => ({
-        ...prev,
-        [data.user_id]: { name: data.user_name, video_enabled: true, audio_enabled: true }
-      }));
-      
-      // Create peer connection for new participant
-      createPeerConnection(data.user_id, false); // They will call us
-    });
-
-    newSocket.on('user_left', (data) => {
-      console.log('User left:', data);
-      setParticipants(prev => {
-        const newParticipants = { ...prev };
-        delete newParticipants[data.user_id];
-        return newParticipants;
-      });
-      
-      // Clean up peer connection
-      cleanupPeerConnection(data.user_id);
-    });
-
-    newSocket.on('webrtc_offer', async (data) => {
-      console.log('Received offer from:', data.from_id);
-      await handleOffer(data.from_id, data.offer);
-    });
-
-    newSocket.on('webrtc_answer', async (data) => {
-      console.log('Received answer from:', data.from_id);
-      await handleAnswer(data.from_id, data.answer);
-    });
-
-    newSocket.on('webrtc_ice_candidate', async (data) => {
-      console.log('Received ICE candidate from:', data.from_id);
-      await handleIceCandidate(data.from_id, data.candidate);
-    });
-
-    newSocket.on('user_video_toggle', (data) => {
-      setParticipants(prev => ({
-        ...prev,
-        [data.user_id]: { ...prev[data.user_id], video_enabled: data.enabled }
-      }));
-    });
-
-    newSocket.on('user_audio_toggle', (data) => {
-      setParticipants(prev => ({
-        ...prev,
-        [data.user_id]: { ...prev[data.user_id], audio_enabled: data.enabled }
-      }));
-    });
-
-    return () => {
-      newSocket.close();
-      localStream?.getTracks().forEach(track => track.stop());
-    };
   }, []);
 
   const startLocalMedia = async () => {
@@ -152,6 +57,8 @@ function App() {
       });
       
       setLocalStream(stream);
+      setMediaPermissionGranted(true);
+      
       if (localVideoRef.current) {
         localVideoRef.current.srcObject = stream;
       }
@@ -159,110 +66,12 @@ function App() {
       return stream;
     } catch (error) {
       console.error('Error accessing media devices:', error);
+      alert('Camera and microphone access is required for video calling. Please grant permissions and try again.');
     }
-  };
-
-  const createPeerConnection = async (participantId, shouldCreateOffer) => {
-    const pc = new RTCPeerConnection(rtcConfig);
-    
-    // Add local stream to peer connection
-    if (localStream) {
-      localStream.getTracks().forEach(track => {
-        pc.addTrack(track, localStream);
-      });
-    }
-    
-    // Handle remote stream
-    pc.ontrack = (event) => {
-      console.log('Received remote stream from:', participantId);
-      const [remoteStream] = event.streams;
-      setRemoteStreams(prev => ({
-        ...prev,
-        [participantId]: remoteStream
-      }));
-      
-      // Set remote video element
-      if (remoteVideoRefs.current[participantId]) {
-        remoteVideoRefs.current[participantId].srcObject = remoteStream;
-      }
-    };
-    
-    // Handle ICE candidates
-    pc.onicecandidate = (event) => {
-      if (event.candidate && socket) {
-        socket.emit('webrtc_ice_candidate', {
-          target_id: participantId,
-          candidate: event.candidate
-        });
-      }
-    };
-    
-    setPeerConnections(prev => ({
-      ...prev,
-      [participantId]: pc
-    }));
-    
-    if (shouldCreateOffer) {
-      // Create and send offer
-      const offer = await pc.createOffer();
-      await pc.setLocalDescription(offer);
-      
-      socket.emit('webrtc_offer', {
-        target_id: participantId,
-        offer: offer
-      });
-    }
-  };
-
-  const handleOffer = async (fromId, offer) => {
-    const pc = peerConnections[fromId];
-    if (pc) {
-      await pc.setRemoteDescription(offer);
-      
-      const answer = await pc.createAnswer();
-      await pc.setLocalDescription(answer);
-      
-      socket.emit('webrtc_answer', {
-        target_id: fromId,
-        answer: answer
-      });
-    }
-  };
-
-  const handleAnswer = async (fromId, answer) => {
-    const pc = peerConnections[fromId];
-    if (pc) {
-      await pc.setRemoteDescription(answer);
-    }
-  };
-
-  const handleIceCandidate = async (fromId, candidate) => {
-    const pc = peerConnections[fromId];
-    if (pc) {
-      await pc.addIceCandidate(candidate);
-    }
-  };
-
-  const cleanupPeerConnection = (participantId) => {
-    const pc = peerConnections[participantId];
-    if (pc) {
-      pc.close();
-      setPeerConnections(prev => {
-        const newConnections = { ...prev };
-        delete newConnections[participantId];
-        return newConnections;
-      });
-    }
-    
-    setRemoteStreams(prev => {
-      const newStreams = { ...prev };
-      delete newStreams[participantId];
-      return newStreams;
-    });
   };
 
   const createRoom = async () => {
-    if (!roomName.trim()) return;
+    if (!userName.trim() || !roomName.trim()) return;
     
     try {
       const response = await fetch(`${BACKEND_URL}/api/rooms`, {
@@ -273,24 +82,36 @@ function App() {
       
       const newRoom = await response.json();
       setRoom(newRoom);
-      joinRoom(newRoom.id);
+      setRoomInfo(newRoom);
+      
+      // Start media and enter room
+      await startLocalMedia();
+      setIsInRoom(true);
+      
     } catch (error) {
       console.error('Error creating room:', error);
     }
   };
 
-  const joinRoom = (roomId) => {
-    if (!userName.trim() || !roomId) return;
-    
-    socket.emit('join_room', {
-      room_id: roomId,
-      user_name: userName
-    });
-  };
-
-  const joinExistingRoom = (selectedRoomId) => {
+  const joinExistingRoom = async (selectedRoomId) => {
     if (!userName.trim()) return;
-    joinRoom(selectedRoomId);
+    
+    try {
+      // Get room details
+      const response = await fetch(`${BACKEND_URL}/api/rooms/${selectedRoomId}`);
+      const roomData = await response.json();
+      
+      if (roomData.room) {
+        setRoom(roomData.room);
+        setRoomInfo(roomData.room);
+        
+        // Start media and enter room
+        await startLocalMedia();
+        setIsInRoom(true);
+      }
+    } catch (error) {
+      console.error('Error joining room:', error);
+    }
   };
 
   const toggleVideo = () => {
@@ -299,8 +120,6 @@ function App() {
       if (videoTrack) {
         videoTrack.enabled = !isVideoEnabled;
         setIsVideoEnabled(!isVideoEnabled);
-        
-        socket.emit('toggle_video', { enabled: !isVideoEnabled });
       }
     }
   };
@@ -311,8 +130,6 @@ function App() {
       if (audioTrack) {
         audioTrack.enabled = !isAudioEnabled;
         setIsAudioEnabled(!isAudioEnabled);
-        
-        socket.emit('toggle_audio', { enabled: !isAudioEnabled });
       }
     }
   };
@@ -321,89 +138,67 @@ function App() {
     try {
       const screenStream = await navigator.mediaDevices.getDisplayMedia({
         video: true,
-        audio: true // This will capture system audio
+        audio: true // This captures system audio from Netflix/streaming
       });
       
-      // Replace video track in all peer connections
-      const videoTrack = screenStream.getVideoTracks()[0];
-      const audioTrack = screenStream.getAudioTracks()[0];
-      
-      Object.values(peerConnections).forEach(pc => {
-        const sender = pc.getSenders().find(s => 
-          s.track && s.track.kind === 'video'
-        );
-        if (sender) {
-          sender.replaceTrack(videoTrack);
-        }
-        
-        if (audioTrack) {
-          const audioSender = pc.getSenders().find(s => 
-            s.track && s.track.kind === 'audio'
-          );
-          if (audioSender) {
-            audioSender.replaceTrack(audioTrack);
-          }
-        }
-      });
-      
-      // Update local video
+      // Update local video to show screen
       if (localVideoRef.current) {
         localVideoRef.current.srcObject = screenStream;
       }
       
+      setLocalStream(screenStream);
       setIsScreenSharing(true);
-      socket.emit('start_screen_share', {});
       
       // Handle screen share end
+      const videoTrack = screenStream.getVideoTracks()[0];
       videoTrack.onended = () => {
         stopScreenShare();
       };
       
     } catch (error) {
       console.error('Error starting screen share:', error);
+      alert('Screen sharing permission denied. Please allow screen sharing to stream Netflix and other content.');
     }
   };
 
   const stopScreenShare = async () => {
     try {
+      // Stop current screen stream
+      if (localStream) {
+        localStream.getTracks().forEach(track => track.stop());
+      }
+      
       // Get camera stream again
       const cameraStream = await navigator.mediaDevices.getUserMedia({
         video: true,
         audio: true
       });
       
-      // Replace tracks back to camera
-      const videoTrack = cameraStream.getVideoTracks()[0];
-      const audioTrack = cameraStream.getAudioTracks()[0];
-      
-      Object.values(peerConnections).forEach(pc => {
-        const sender = pc.getSenders().find(s => 
-          s.track && s.track.kind === 'video'
-        );
-        if (sender) {
-          sender.replaceTrack(videoTrack);
-        }
-        
-        const audioSender = pc.getSenders().find(s => 
-          s.track && s.track.kind === 'audio'
-        );
-        if (audioSender) {
-          audioSender.replaceTrack(audioTrack);
-        }
-      });
-      
-      // Update local video
+      // Update local video back to camera
       if (localVideoRef.current) {
         localVideoRef.current.srcObject = cameraStream;
       }
       
       setLocalStream(cameraStream);
       setIsScreenSharing(false);
-      socket.emit('stop_screen_share', {});
       
     } catch (error) {
       console.error('Error stopping screen share:', error);
     }
+  };
+
+  const leaveRoom = () => {
+    // Stop all media tracks
+    if (localStream) {
+      localStream.getTracks().forEach(track => track.stop());
+    }
+    
+    setIsInRoom(false);
+    setRoom(null);
+    setRoomInfo(null);
+    setLocalStream(null);
+    setIsScreenSharing(false);
+    setMediaPermissionGranted(false);
   };
 
   if (!isInRoom) {
@@ -514,7 +309,7 @@ function App() {
           <h1 className="text-2xl font-bold text-white">WatchTogether</h1>
           <Badge variant="secondary" className="bg-white/10 text-white">
             <Users className="w-4 h-4 mr-1" />
-            {Object.keys(participants).length + 1} participants
+            Room: {roomInfo?.name}
           </Badge>
         </div>
         
@@ -543,10 +338,18 @@ function App() {
           >
             {isScreenSharing ? <MonitorOff className="w-4 h-4" /> : <Monitor className="w-4 h-4" />}
           </Button>
+          
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={leaveRoom}
+          >
+            <Phone className="w-4 h-4" />
+          </Button>
         </div>
       </div>
 
-      {/* Video Grid */}
+      {/* Video Interface */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {/* Local Video */}
         <Card className="bg-white/10 backdrop-blur-md border-white/20">
@@ -570,37 +373,37 @@ function App() {
           </CardContent>
         </Card>
 
-        {/* Remote Videos */}
-        {Object.entries(participants).map(([participantId, participant]) => (
-          <Card key={participantId} className="bg-white/10 backdrop-blur-md border-white/20">
-            <CardContent className="p-4">
-              <div className="relative rounded-lg overflow-hidden bg-slate-800 aspect-video">
-                <video
-                  ref={el => remoteVideoRefs.current[participantId] = el}
-                  autoPlay
-                  className="w-full h-full object-cover"
-                />
-                <div className="absolute bottom-2 left-2 bg-black/50 px-2 py-1 rounded text-white text-sm">
-                  {participant.name}
-                </div>
-                {!participant.video_enabled && (
-                  <div className="absolute inset-0 bg-slate-800 flex items-center justify-center">
-                    <VideoOff className="w-12 h-12 text-white/50" />
-                  </div>
-                )}
-                <div className="absolute top-2 right-2 flex space-x-1">
-                  {!participant.audio_enabled && (
-                    <MicOff className="w-4 h-4 text-red-400" />
-                  )}
-                  {participant.screen_sharing && (
-                    <Monitor className="w-4 h-4 text-green-400" />
-                  )}
-                </div>
+        {/* Placeholder for other participants */}
+        <Card className="bg-white/10 backdrop-blur-md border-white/20">
+          <CardContent className="p-4">
+            <div className="relative rounded-lg overflow-hidden bg-slate-800 aspect-video flex items-center justify-center">
+              <div className="text-center text-white/70">
+                <AlertCircle className="w-16 h-16 mx-auto mb-4" />
+                <p className="text-lg font-medium">Waiting for participants...</p>
+                <p className="text-sm mt-2">
+                  Share this room name with friends:<br />
+                  <span className="font-mono bg-white/10 px-2 py-1 rounded">
+                    {roomInfo?.name}
+                  </span>
+                </p>
               </div>
-            </CardContent>
-          </Card>
-        ))}
+            </div>
+          </CardContent>
+        </Card>
       </div>
+
+      {/* Instructions */}
+      <Card className="mt-6 bg-white/10 backdrop-blur-md border-white/20">
+        <CardContent className="p-4">
+          <h3 className="text-white font-semibold mb-2">How to watch Netflix together:</h3>
+          <ol className="text-white/70 text-sm space-y-1">
+            <li>1. Click the <Monitor className="w-4 h-4 inline mx-1" /> screen share button</li>
+            <li>2. Select your Netflix browser tab and check "Share audio"</li>
+            <li>3. Start your movie - everyone will see and hear it!</li>
+            <li>4. Use video/audio controls to mute yourself while watching</li>
+          </ol>
+        </CardContent>
+      </Card>
     </div>
   );
 }
