@@ -47,6 +47,16 @@ function App() {
     ]
   };
 
+  const loadAvailableRooms = async () => {
+    try {
+      const response = await fetch(`${BACKEND_URL}/api/rooms`);
+      const rooms = await response.json();
+      setAvailableRooms(rooms);
+    } catch (error) {
+      console.error('Error loading rooms:', error);
+    }
+  };
+
   useEffect(() => {
     // Load available rooms
     loadAvailableRooms();
