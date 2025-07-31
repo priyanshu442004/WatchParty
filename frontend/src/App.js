@@ -48,6 +48,9 @@ function App() {
   };
 
   useEffect(() => {
+    // Load available rooms
+    loadAvailableRooms();
+    
     // Initialize Socket.IO connection
     const newSocket = io(BACKEND_URL);
     setSocket(newSocket);
