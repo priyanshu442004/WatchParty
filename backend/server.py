@@ -254,9 +254,6 @@ async def get_room(room_id: str):
 # Include the router in the main app
 app.include_router(api_router)
 
-# Mount Socket.IO
-socket_app = socketio.ASGIApp(sio, app)
-
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
@@ -276,5 +273,5 @@ logger = logging.getLogger(__name__)
 async def shutdown_db_client():
     client.close()
 
-# For Socket.IO to work properly, we need to return the socket_app
-app = socket_app
+# Mount Socket.IO - use a different approach for compatibility
+socket_app = socketio.ASGIApp(sio, other_asgi_app=app)
