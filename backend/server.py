@@ -273,5 +273,5 @@ logger = logging.getLogger(__name__)
 async def shutdown_db_client():
     client.close()
 
-# Mount Socket.IO - use a different approach for compatibility
-app = socketio.ASGIApp(sio, other_asgi_app=app)
+# Mount Socket.IO with proper ASGI integration
+socket_app = socketio.ASGIApp(sio, other_asgi_app=app)
