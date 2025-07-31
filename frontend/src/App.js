@@ -285,6 +285,11 @@ function App() {
     });
   };
 
+  const joinExistingRoom = (selectedRoomId) => {
+    if (!userName.trim()) return;
+    joinRoom(selectedRoomId);
+  };
+
   const toggleVideo = () => {
     if (localStream) {
       const videoTrack = localStream.getVideoTracks()[0];
